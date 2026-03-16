@@ -174,11 +174,11 @@ def combined_reward(completions, **kwargs):
         combined += f"    scores_{i} = {func_name}(completions, **kwargs)\n"
 
     combined += "    for j in range(len(completions)):\n"
-    combined += "        total = sum("
+    combined += "        total = "
     combined += " + ".join(
         f"weights[{i}] * scores_{i}[j]" for i in range(len(func_names))
     )
-    combined += " for _ in [0])\n"
+    combined += "\n"
     combined += "        all_scores.append(total)\n"
     combined += "    return all_scores\n"
 

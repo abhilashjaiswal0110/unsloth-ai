@@ -1,0 +1,23 @@
+name: export-agent
+version: "1.0.0"
+description: Model export, quantization, and deployment configuration
+author: Unsloth AI
+modes:
+  - gguf
+  - vllm
+  - hub
+  - merged
+skills:
+  - export_model
+  - generate_deployment
+  - validate_export
+requirements:
+  - python>=3.9
+  - unsloth
+tags:
+  - export
+  - deployment
+  - gguf
+  - ollama
+  - vllm
+  - quantization

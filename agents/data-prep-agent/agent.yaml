@@ -1,0 +1,23 @@
+name: data-prep-agent
+version: "1.0.0"
+description: Dataset preparation, validation, and optimization for fine-tuning
+author: Unsloth AI
+modes:
+  - validate
+  - transform
+  - clean
+  - analyze
+skills:
+  - validate_dataset
+  - clean_dataset
+  - convert_format
+  - analyze_dataset
+requirements:
+  - python>=3.9
+  - datasets
+  - pandas
+tags:
+  - data
+  - preprocessing
+  - validation
+  - cleaning

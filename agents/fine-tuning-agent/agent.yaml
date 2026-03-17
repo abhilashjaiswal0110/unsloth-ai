@@ -1,0 +1,27 @@
+name: fine-tuning-agent
+version: "1.0.0"
+description: Guided model fine-tuning workflow with intelligent configuration
+author: Unsloth AI
+modes:
+  - quick
+  - guided
+  - advanced
+  - benchmark
+skills:
+  - recommend_config
+  - generate_script
+  - validate_config
+  - monitor_training
+requirements:
+  - python>=3.9
+  - unsloth
+  - transformers
+  - trl
+  - datasets
+  - peft
+tags:
+  - fine-tuning
+  - lora
+  - qlora
+  - sft
+  - training

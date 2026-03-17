@@ -1,0 +1,22 @@
+name: model-eval-agent
+version: "1.0.0"
+description: Model evaluation, benchmarking, and comparison
+author: Unsloth AI
+modes:
+  - quick
+  - benchmark
+  - compare
+  - regression
+skills:
+  - evaluate_model
+  - compare_models
+  - run_benchmark
+requirements:
+  - python>=3.9
+  - unsloth
+  - transformers
+tags:
+  - evaluation
+  - benchmarking
+  - comparison
+  - quality

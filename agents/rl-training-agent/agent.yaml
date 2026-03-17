@@ -1,0 +1,24 @@
+name: rl-training-agent
+version: "1.0.0"
+description: Reinforcement learning training with GRPO and DPO
+author: Unsloth AI
+modes:
+  - grpo
+  - dpo
+  - reward-design
+  - evaluate
+skills:
+  - reward_design
+  - rl_training
+  - monitor_rl
+requirements:
+  - python>=3.9
+  - unsloth
+  - trl
+  - transformers
+tags:
+  - reinforcement-learning
+  - grpo
+  - dpo
+  - reward
+  - alignment

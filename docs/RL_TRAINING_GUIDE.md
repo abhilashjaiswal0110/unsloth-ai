@@ -6,6 +6,7 @@ This guide covers reinforcement learning (RL) training with Unsloth, focusing on
 
 - [Overview](#overview)
 - [GRPO Training](#grpo-training)
+- [Qwen3 Advanced GRPO](#qwen3-advanced-grpo)
 - [Use Case: Math Reasoning](#use-case-math-reasoning)
 - [Use Case: Code Correctness](#use-case-code-correctness)
 - [Use Case: Safety Alignment](#use-case-safety-alignment)
@@ -90,6 +91,227 @@ trainer = GRPOTrainer(
 trainer.train()
 model.save_pretrained("grpo-finetuned-model")
 ```
+
+## Qwen3 Advanced GRPO
+
+Qwen3 is Alibaba's latest model family with a key capability: **extended thinking mode**,
+where the model reasons inside `<think>…</think>` before producing a final answer.
+GRPO with multi-objective rewards is an ideal training method to reinforce this behaviour.
+
+### Why Qwen3 + GRPO?
+
+| Feature | Benefit for GRPO |
+|---------|-----------------|
+| Thinking mode (`<think>`) | Enables reward for reasoning quality, not just answer |
+| ChatML format | Clean prompt/response separation for rollout generation |
+| Strong base capability | Higher baseline reward → faster GRPO convergence |
+| Unsloth native support | 2-5× faster training, 70% less VRAM |
+
+### Quick start (Windows — isolated env)
+
+See [WINDOWS_QWEN3_GRPO_SETUP.md](WINDOWS_QWEN3_GRPO_SETUP.md) for full
+environment setup. Once the conda env is active:
+
+```powershell
+python scripts\train_qwen3_grpo.py --config configs\qwen3_grpo.yaml
+```
+
+### Qwen3 Advanced GRPO with multi-objective rewards
+
+The included training script (`scripts/train_qwen3_grpo.py`) implements a
+**four-component composite reward** tuned for Qwen3's thinking paradigm:
+
+```python
+from unsloth import FastLanguageModel
+from unsloth.models.rl import PatchFastRL
+from trl import GRPOConfig, GRPOTrainer
+
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/Qwen3-8B",
+    max_seq_length=4096,
+    load_in_4bit=True,
+)
+model = FastLanguageModel.get_peft_model(
+    model,
+    r=32, lora_alpha=32,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                    "gate_proj", "up_proj", "down_proj"],
+    use_gradient_checkpointing="unsloth",
+)
+
+# Enable Unsloth's GRPO optimisation patch
+PatchFastRL("GRPO", FastLanguageModel)
+```
+
+#### Reward component 1 — Format (weight: 0.30)
+
+Rewards Qwen3's thinking mode + boxed answer format:
+
+```python
+import re
+
+_BOXED_RE    = re.compile(r"\\boxed\{(.+?)\}", re.DOTALL)
+_THINKING_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+def format_reward(completions, **kwargs):
+    scores = []
+    for comp in completions:
+        score = 0.0
+        thinking = _THINKING_RE.search(comp)
+        if thinking:
+            score += 0.5                        # <think> block present
+            if len(thinking.group(1).split()) >= 10:
+                score += 0.2                    # Non-trivial reasoning
+        if _BOXED_RE.search(comp):
+            score += 0.3                        # \\boxed{} answer format
+        scores.append(score)
+    return scores
+```
+
+#### Reward component 2 — Correctness (weight: 0.40)
+
+Numerical answer verification against ground truth:
+
+```python
+import math
+
+def correctness_reward(completions, answers=None, **kwargs):
+    if not answers:
+        return [0.0] * len(completions)
+    scores = []
+    for comp, expected in zip(completions, answers):
+        score = 0.0
+        hits = _BOXED_RE.findall(comp)
+        predicted = hits[-1].strip() if hits else None
+        if predicted:
+            try:
+                if math.isclose(float(predicted.replace(",", "")),
+                                float(str(expected).replace(",", "")),
+                                rel_tol=1e-4):
+                    score = 1.0           # Exact numerical match
+                elif str(expected) in comp:
+                    score = 0.3           # Partial credit
+            except ValueError:
+                pass
+        scores.append(score)
+    return scores
+```
+
+#### Reward component 3 — Reasoning quality (weight: 0.20)
+
+Rewards structured, multi-step thinking chains:
+
+```python
+def reasoning_reward(completions, **kwargs):
+    scores = []
+    for comp in completions:
+        m = _THINKING_RE.search(comp)
+        thinking = m.group(1) if m else ""
+        if not thinking:
+            scores.append(0.0); continue
+
+        score  = min(len(re.findall(r"step\s*\d+|\d+\.", thinking, re.I)) * 0.08, 0.4)
+        score += min(thinking.count("=") * 0.03, 0.2)
+        score += min(sum(w in thinking.lower()
+                         for w in ["therefore", "because", "hence", "thus"]) * 0.05, 0.2)
+        scores.append(round(min(score, 1.0), 4))
+    return scores
+```
+
+#### Reward component 4 — Length (weight: 0.10)
+
+Gaussian reward peaked at ~350 words — balances verbosity vs. conciseness:
+
+```python
+def length_reward(completions, **kwargs):
+    return [
+        round(math.exp(-0.5 * ((len(c.split()) - 350) / 200) ** 2), 4)
+        for c in completions
+    ]
+```
+
+#### Assembling the composite reward
+
+```python
+def composite_reward(completions, **kwargs):
+    return [
+        0.30 * f + 0.40 * c + 0.20 * r + 0.10 * ln
+        for f, c, r, ln in zip(
+            format_reward(completions, **kwargs),
+            correctness_reward(completions, **kwargs),
+            reasoning_reward(completions, **kwargs),
+            length_reward(completions, **kwargs),
+        )
+    ]
+
+training_args = GRPOConfig(
+    output_dir="outputs/qwen3-grpo",
+    per_device_train_batch_size=1,
+    gradient_accumulation_steps=4,
+    learning_rate=5e-6,
+    num_train_epochs=1,
+    num_generations=6,              # 6 rollouts per prompt
+    max_prompt_length=512,
+    max_completion_length=1024,
+    temperature=0.9,
+    bf16=True,
+    remove_unused_columns=False,    # Required for reward kwargs
+)
+
+trainer = GRPOTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=train_ds,
+    eval_dataset=eval_ds,
+    reward_funcs=[composite_reward],
+    args=training_args,
+)
+trainer.train()
+```
+
+### Prompt format for Qwen3 thinking mode
+
+Always use `enable_thinking=True` when applying the Qwen3 chat template:
+
+```python
+SYSTEM_PROMPT = (
+    "You are a rigorous reasoning assistant. "
+    "Think step-by-step inside <think>...</think> before answering. "
+    "Always put your final numerical answer inside \\boxed{}."
+)
+
+messages = [
+    {"role": "system", "content": SYSTEM_PROMPT},
+    {"role": "user",   "content": "What is 15% of 200?"},
+]
+prompt = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
+    enable_thinking=True,         # Qwen3-specific flag
+)
+```
+
+### Configuration file
+
+All hyperparameters are configurable via [`configs/qwen3_grpo.yaml`](../configs/qwen3_grpo.yaml).
+The most impactful knobs for GRPO:
+
+```yaml
+num_generations: 6          # Rollouts per prompt; higher = better signal, more VRAM
+learning_rate: 5.0e-6       # Keep low for RL stability
+max_completion_length: 1024 # Must accommodate <think> + answer
+weight_correctness: 0.40    # Dominant signal for math tasks
+```
+
+### Windows-specific notes
+
+- **No Flash Attention**: `xformers` is used instead — similar speed on NVIDIA RTX GPUs.
+- **`triton-windows`**: Replaces Linux `triton`; installed automatically by `setup\windows\install.ps1`.
+- **`bitsandbytes`**: Windows-compatible build installed automatically.
+- **Activation**: Always run `conda activate unsloth-qwen3-grpo` before training.
+
+---
 
 ## Use Case: Math Reasoning
 
@@ -371,3 +593,4 @@ def json_format_reward(completions, **kwargs):
 - [Fine-Tuning Guide](FINE_TUNING_GUIDE.md) — SFT training workflows
 - [Data Preparation](DATA_PREPARATION.md) — Build custom RL datasets
 - [Examples](EXAMPLES.md) — More RL training examples
+- [Windows Qwen3 GRPO Setup](WINDOWS_QWEN3_GRPO_SETUP.md) — Isolated Windows environment for Qwen3 Advanced GRPO

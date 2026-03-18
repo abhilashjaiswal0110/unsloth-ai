@@ -7,23 +7,55 @@ This guide walks you through installing Unsloth and running your first fine-tuni
 - **Python**: 3.9 – 3.14
 - **GPU**: NVIDIA (CUDA 11.8+), AMD (ROCm), Intel, or Apple Silicon
 - **VRAM**: 6GB+ recommended (4-bit quantization enables smaller GPUs)
-- **OS**: Linux, WSL2 (Windows), macOS (Apple Silicon)
+- **OS**: Linux, WSL2, **Windows 10/11 (native)**, macOS (Apple Silicon)
 
 ## Installation
 
-### Option 1: pip (Recommended)
+### Option 1: pip (Recommended — Linux / macOS / WSL2)
 
 ```bash
 # Create a virtual environment
 python -m venv unsloth-env
-source unsloth-env/bin/activate  # Linux/macOS
-# unsloth-env\Scripts\activate   # Windows
+source unsloth-env/bin/activate  # Linux/macOS/WSL2
 
 # Install Unsloth with HuggingFace support
 pip install unsloth[huggingface]
 ```
 
-### Option 2: From Source (Development)
+### Option 2: Windows Native — Isolated Conda Environment (Recommended for Windows)
+
+For training on **Windows without WSL2**, use the automated installer that
+creates a fully isolated conda environment (`unsloth-qwen3-grpo`) that does
+**not** conflict with any existing Python or PyTorch installations.
+
+```powershell
+# From the repository root — no admin rights required
+setup\windows\install.bat
+```
+
+**What the installer does:**
+1. Detects NVIDIA GPU and CUDA driver version
+2. Installs Miniconda3 (user-only) if conda is absent
+3. Creates isolated conda env with Python 3.11
+4. Installs PyTorch with correct CUDA version
+5. Installs `triton-windows`, `bitsandbytes`, `xformers` (Windows-specific packages)
+6. Installs Unsloth from source in editable mode
+7. Writes a `.env` credential template
+
+**After installation:**
+```powershell
+conda activate unsloth-qwen3-grpo
+python scripts\train_qwen3_grpo.py --config configs\qwen3_grpo.yaml
+```
+
+Supported CUDA versions: `11.8`, `12.1`, `12.4` (default). Override:
+```powershell
+powershell -ExecutionPolicy Bypass -File setup\windows\install.ps1 -CudaVersion 12.1
+```
+
+> Full Windows setup guide: [docs/WINDOWS_QWEN3_GRPO_SETUP.md](WINDOWS_QWEN3_GRPO_SETUP.md)
+
+### Option 3: From Source (Development)
 
 ```bash
 git clone https://github.com/abhilashjaiswal0110/unsloth-ai.git
@@ -31,20 +63,21 @@ cd unsloth-ai
 
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate       # Linux/macOS
+# .venv\Scripts\activate        # Windows (or use conda env above)
 
 # Install in development mode
 pip install -e ".[huggingface]"
 ```
 
-### Option 3: Docker
+### Option 4: Docker
 
 ```bash
 docker pull unsloth/unsloth
 docker run --gpus all -it unsloth/unsloth
 ```
 
-### Option 4: Google Colab
+### Option 5: Google Colab
 
 Use one of the free Colab notebooks — no local installation needed:
 
@@ -171,3 +204,4 @@ unsloth export --model ./my-finetuned-model --format gguf --quantization q4_k_m
 - [Data Preparation](DATA_PREPARATION.md) — Prepare custom datasets
 - [Examples](EXAMPLES.md) — Real-world use cases and prompts
 - [RL Training Guide](RL_TRAINING_GUIDE.md) — Reinforcement learning with GRPO
+- [Windows Qwen3 GRPO Setup](WINDOWS_QWEN3_GRPO_SETUP.md) — Windows-native isolated environment and Qwen3 Advanced GRPO training

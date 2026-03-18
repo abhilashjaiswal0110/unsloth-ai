@@ -1,0 +1,95 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Qwen3 Advanced GRPO Training Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage:
+#   conda activate unsloth-qwen3-grpo
+#   python scripts/train_qwen3_grpo.py --config configs/qwen3_grpo.yaml
+#
+# Tune the fields below to match your GPU VRAM and task domain.
+# CLI flags always override values in this file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Model ────────────────────────────────────────────────────────────────────
+# Recommended sizes vs VRAM (4-bit):
+#   Qwen3-1.7B  →  ~4 GB    (RTX 3060 / A4000)
+#   Qwen3-4B    →  ~6 GB    (RTX 3070 / A5000)
+#   Qwen3-8B    →  ~10 GB   (RTX 3080 / A6000)   ← default
+#   Qwen3-14B   →  ~16 GB   (RTX 4090 / A100-40G)
+#   Qwen3-32B   →  ~24 GB   (A100-80G / H100)
+
+model: unsloth/Qwen3-8B
+max_seq_length: 4096
+load_in_4bit: true
+load_in_8bit: false
+
+# ── LoRA ─────────────────────────────────────────────────────────────────────
+lora_rank: 32
+lora_alpha: 32
+lora_dropout: 0.0
+target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# ── GRPO Trainer ─────────────────────────────────────────────────────────────
+output_dir: outputs/qwen3-grpo
+num_train_epochs: 1
+max_steps: -1                  # -1 → run full epochs; set > 0 to cap
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 4    # effective batch = 1 × 4 = 4
+
+learning_rate: 5.0e-6
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+
+# Generations per prompt (GRPO baseline). Higher = better reward signal but
+# more VRAM/compute. Reduce to 4 on <12 GB GPUs.
+num_generations: 6
+
+max_prompt_length: 512
+max_completion_length: 1024
+
+# Sampling temperature & top-p for generation
+temperature: 0.9
+top_p: 0.95
+
+logging_steps: 1
+save_steps: 50
+eval_steps: 50
+
+# Mixed precision — prefer bf16 on Ampere (30xx / A-series) and newer.
+# Switch to fp16: true + bf16: false on Volta / Turing GPUs.
+fp16: false
+bf16: true
+
+gradient_checkpointing: unsloth    # Unsloth memory-efficient variant
+
+# ── Dataset ──────────────────────────────────────────────────────────────────
+# Default: GSM8K (math reasoning). Swap for your own HF dataset.
+# Required columns: "question" (or "prompt") + "answer" (or "solution").
+dataset: openai/gsm8k
+dataset_config: main
+dataset_split: train
+dataset_eval_split: test
+max_train_samples: -1              # -1 → use all; reduce for quick experiments
+max_eval_samples: 200
+
+# ── Reward Weights ────────────────────────────────────────────────────────────
+# Must sum to 1.0. Adjust per task:
+#   - Math-heavy tasks: increase weight_correctness
+#   - Creative tasks  : increase weight_reasoning / weight_length
+weight_format:      0.30   # <think> block + \\boxed{} format
+weight_correctness: 0.40   # Numerical answer correctness
+weight_reasoning:   0.20   # Step-by-step quality in <think>
+weight_length:      0.10   # Gaussian penalty for too-short/too-long
+
+# ── Logging & Hub ─────────────────────────────────────────────────────────────
+report_to: wandb              # "wandb" | "tensorboard" | "none"
+run_name: qwen3-8b-grpo-gsm8k
+push_to_hub: false
+hub_model_id: ""              # e.g. "your-username/qwen3-8b-grpo"

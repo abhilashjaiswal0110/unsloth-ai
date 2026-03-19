@@ -67,7 +67,8 @@ Write-Step  "Conda env name  : $EnvName"
 Write-Header "Step 1 -Verifying NVIDIA GPU"
 
 try {
-    $nvsmiPath = (Get-Command nvidia-smi -ErrorAction SilentlyContinue)?.Source
+    $nvsmiCmd  = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+    $nvsmiPath = if ($nvsmiCmd) { $nvsmiCmd.Source } else { $null }
     if (-not $nvsmiPath) {
         $nvsmiPath = "C:\Windows\System32\nvidia-smi.exe"
     }

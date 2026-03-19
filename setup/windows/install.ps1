@@ -66,6 +66,34 @@ Write-Step  "Conda env name  : $EnvName"
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Header "Step 1 -Verifying NVIDIA GPU"
 
+# Detect all display adapters and report them before checking NVIDIA
+$allGPUs = Get-WmiObject Win32_VideoController | Select-Object -ExpandProperty Name
+Write-Step "Detected display adapter(s):"
+foreach ($gpu in $allGPUs) { Write-Step "  $gpu" }
+
+# Check whether any adapter is NVIDIA
+$hasNvidia = $allGPUs | Where-Object { $_ -match "NVIDIA|GeForce|RTX|GTX|Quadro|Tesla" }
+if (-not $hasNvidia) {
+    Write-Fail "No NVIDIA GPU detected on this machine."
+    Write-Host ""
+    Write-Host "  Your system has: $($allGPUs -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Unsloth GRPO training requires a discrete NVIDIA GPU (GeForce/RTX/Quadro)." -ForegroundColor Yellow
+    Write-Host "  CUDA does NOT run on Intel/AMD integrated graphics." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Options to run Qwen3 GRPO training:" -ForegroundColor Cyan
+    Write-Host "  1. Google Colab (FREE, T4 GPU, no setup):" -ForegroundColor Cyan
+    Write-Host "     -> Open notebooks\qwen3_grpo_colab.ipynb in Colab" -ForegroundColor White
+    Write-Host "     -> https://colab.research.google.com/  (upload the notebook)" -ForegroundColor White
+    Write-Host "  2. Cloud GPU (paid, on-demand):" -ForegroundColor Cyan
+    Write-Host "     -> RunPod  : https://www.runpod.io     (RTX 4090, ~$0.74/hr)" -ForegroundColor White
+    Write-Host "     -> vast.ai : https://vast.ai           (cheapest spot GPUs)" -ForegroundColor White
+    Write-Host "     -> Lambda  : https://lambdalabs.com    (A10/A100)" -ForegroundColor White
+    Write-Host "  3. WSL2 on a machine that has an NVIDIA GPU." -ForegroundColor Cyan
+    Write-Host ""
+    exit 1
+}
+
 try {
     $nvsmiCmd  = Get-Command nvidia-smi -ErrorAction SilentlyContinue
     $nvsmiPath = if ($nvsmiCmd) { $nvsmiCmd.Source } else { $null }
@@ -74,10 +102,28 @@ try {
     }
     $gpuInfo = & $nvsmiPath --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>&1
     if ($LASTEXITCODE -ne 0) { throw "nvidia-smi returned non-zero exit" }
-    Write-Success "GPU detected:`n$gpuInfo"
+    Write-Success "GPU detected:"
+    foreach ($line in ($gpuInfo -split "`n")) {
+        if ($line.Trim()) { Write-Step "  $($line.Trim())" }
+    }
 } catch {
-    Write-Fail "NVIDIA GPU not found or driver not installed."
-    Write-Warn "Install NVIDIA drivers from: https://www.nvidia.com/drivers"
+    Write-Fail "NVIDIA GPU hardware found but driver not installed or nvidia-smi missing."
+    Write-Host ""
+    Write-Host "  Detected: $($hasNvidia -join ', ')" -ForegroundColor Yellow
+    Write-Host "  Download the correct driver:" -ForegroundColor Cyan
+
+    # Identify GPU family and suggest direct download URL
+    $gpuName = $hasNvidia | Select-Object -First 1
+    if ($gpuName -match "RTX 40") {
+        Write-Host "  RTX 40-series -> https://www.nvidia.com/en-us/geforce/drivers/" -ForegroundColor White
+    } elseif ($gpuName -match "RTX 30") {
+        Write-Host "  RTX 30-series -> https://www.nvidia.com/en-us/geforce/drivers/" -ForegroundColor White
+    } elseif ($gpuName -match "Quadro|Tesla|A\d{3}|H\d{3}") {
+        Write-Host "  Data-centre / Quadro -> https://www.nvidia.com/en-us/drivers/unix/" -ForegroundColor White
+    } else {
+        Write-Host "  All drivers -> https://www.nvidia.com/en-us/geforce/drivers/" -ForegroundColor White
+    }
+    Write-Host "  Install the Game Ready or Studio driver, then rerun this script." -ForegroundColor Yellow
     exit 1
 }
 

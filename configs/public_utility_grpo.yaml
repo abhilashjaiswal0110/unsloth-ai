@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Public Utility Sector GRPO Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage:
+#   python sectors/train_sector_grpo.py --config configs/public_utility_grpo.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+model: unsloth/Qwen3-8B
+max_seq_length: 4096
+load_in_4bit: true
+load_in_8bit: false
+
+# ── LoRA ─────────────────────────────────────────────────────────────────────
+lora_rank: 32
+lora_alpha: 32
+lora_dropout: 0.0
+target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# ── GRPO Trainer ─────────────────────────────────────────────────────────────
+output_dir: outputs/public-utility-grpo
+num_train_epochs: 3
+max_steps: -1
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 4
+
+learning_rate: 5.0e-6
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+
+num_generations: 6
+max_prompt_length: 768
+max_completion_length: 1536
+
+temperature: 0.8
+top_p: 0.95
+
+logging_steps: 1
+save_steps: 25
+eval_steps: 25
+
+fp16: false
+bf16: true
+gradient_checkpointing: unsloth
+
+# ── Dataset ──────────────────────────────────────────────────────────────────
+sector: public_utility
+data_dir: data/sectors
+dataset_split: train
+dataset_eval_split: eval
+
+# ── Reward Weights ───────────────────────────────────────────────────────────
+# Public Utility: emphasize accuracy of calculations and completeness
+weight_format:        0.15
+weight_correctness:   0.35
+weight_reasoning:     0.25
+weight_completeness:  0.15
+weight_safety:        0.10
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+report_to: none
+run_name: public-utility-qwen3-8b-grpo
+push_to_hub: false
+hub_model_id: ""

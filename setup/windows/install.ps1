@@ -43,11 +43,11 @@ $ProgressPreference    = "SilentlyContinue"   # Faster Invoke-WebRequest
 # ─────────────────────────────────────────────────────────────────────────────
 # Colour helpers
 # ─────────────────────────────────────────────────────────────────────────────
-function Write-Header  { param($msg) Write-Host "`n══ $msg ══" -ForegroundColor Cyan   }
-function Write-Success { param($msg) Write-Host "✔  $msg"     -ForegroundColor Green  }
-function Write-Warn    { param($msg) Write-Host "⚠  $msg"     -ForegroundColor Yellow }
-function Write-Fail    { param($msg) Write-Host "✘  $msg"     -ForegroundColor Red    }
-function Write-Step    { param($msg) Write-Host "→  $msg"     -ForegroundColor White  }
+function Write-Header  { param($msg) Write-Host "`n== $msg ==" -ForegroundColor Cyan   }
+function Write-Success { param($msg) Write-Host "[OK]  $msg"  -ForegroundColor Green  }
+function Write-Warn    { param($msg) Write-Host "[WARN] $msg" -ForegroundColor Yellow }
+function Write-Fail    { param($msg) Write-Host "[FAIL] $msg" -ForegroundColor Red    }
+function Write-Step    { param($msg) Write-Host "  ->  $msg"  -ForegroundColor White  }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 0.  Locate repo root (script lives at <root>\setup\windows\install.ps1)
@@ -55,7 +55,7 @@ function Write-Step    { param($msg) Write-Host "→  $msg"     -ForegroundColor
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path
 
-Write-Header "Unsloth Qwen3 Advanced GRPO — Windows Isolated Setup"
+Write-Header "Unsloth Qwen3 Advanced GRPO - Windows Isolated Setup"
 Write-Step  "Repository root : $RepoRoot"
 Write-Step  "CUDA version    : $CudaVersion"
 Write-Step  "Python version  : $PythonVersion"
@@ -64,19 +64,66 @@ Write-Step  "Conda env name  : $EnvName"
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.  NVIDIA GPU check
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 1 — Verifying NVIDIA GPU"
+Write-Header "Step 1 - Verifying NVIDIA GPU"
+
+# Detect all display adapters and report them before checking NVIDIA
+$allGPUs = Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name
+Write-Step "Detected display adapter(s):"
+foreach ($gpu in $allGPUs) { Write-Step "  $gpu" }
+
+# Check whether any adapter is NVIDIA
+$hasNvidia = $allGPUs | Where-Object { $_ -match "NVIDIA|GeForce|RTX|GTX|Quadro|Tesla" }
+if (-not $hasNvidia) {
+    Write-Fail "No NVIDIA GPU detected on this machine."
+    Write-Host ""
+    Write-Host "  Your system has: $($allGPUs -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Unsloth GRPO training requires a discrete NVIDIA GPU (GeForce/RTX/Quadro)." -ForegroundColor Yellow
+    Write-Host "  CUDA does NOT run on Intel/AMD integrated graphics." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Options to run Qwen3 GRPO training:" -ForegroundColor Cyan
+    Write-Host "  1. Google Colab (FREE, T4 GPU, no setup):" -ForegroundColor Cyan
+    Write-Host "     -> Open notebooks\qwen3_grpo_colab.ipynb in Colab" -ForegroundColor White
+    Write-Host "     -> https://colab.research.google.com/  (upload the notebook)" -ForegroundColor White
+    Write-Host "  2. Cloud GPU (paid, on-demand):" -ForegroundColor Cyan
+    Write-Host "     -> RunPod  : https://www.runpod.io     (RTX 4090, ~$0.74/hr)" -ForegroundColor White
+    Write-Host "     -> vast.ai : https://vast.ai           (cheapest spot GPUs)" -ForegroundColor White
+    Write-Host "     -> Lambda  : https://lambdalabs.com    (A10/A100)" -ForegroundColor White
+    Write-Host "  3. WSL2 on a machine that has an NVIDIA GPU." -ForegroundColor Cyan
+    Write-Host ""
+    exit 1
+}
 
 try {
-    $nvsmiPath = (Get-Command nvidia-smi -ErrorAction SilentlyContinue)?.Source
+    $nvsmiCmd  = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+    $nvsmiPath = if ($nvsmiCmd) { $nvsmiCmd.Source } else { $null }
     if (-not $nvsmiPath) {
         $nvsmiPath = "C:\Windows\System32\nvidia-smi.exe"
     }
     $gpuInfo = & $nvsmiPath --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>&1
     if ($LASTEXITCODE -ne 0) { throw "nvidia-smi returned non-zero exit" }
-    Write-Success "GPU detected:`n$gpuInfo"
+    Write-Success "GPU detected:"
+    foreach ($line in ($gpuInfo -split "`n")) {
+        if ($line.Trim()) { Write-Step "  $($line.Trim())" }
+    }
 } catch {
-    Write-Fail "NVIDIA GPU not found or driver not installed."
-    Write-Warn "Install NVIDIA drivers from: https://www.nvidia.com/drivers"
+    Write-Fail "NVIDIA GPU hardware found but driver not installed or nvidia-smi missing."
+    Write-Host ""
+    Write-Host "  Detected: $($hasNvidia -join ', ')" -ForegroundColor Yellow
+    Write-Host "  Download the correct driver:" -ForegroundColor Cyan
+
+    # Identify GPU family and suggest direct download URL
+    $gpuName = $hasNvidia | Select-Object -First 1
+    if ($gpuName -match "RTX 40") {
+        Write-Host "  RTX 40-series -> https://www.nvidia.com/en-us/geforce/drivers/" -ForegroundColor White
+    } elseif ($gpuName -match "RTX 30") {
+        Write-Host "  RTX 30-series -> https://www.nvidia.com/en-us/geforce/drivers/" -ForegroundColor White
+    } elseif ($gpuName -match "Quadro|Tesla|A\d{3}|H\d{3}") {
+        Write-Host "  Data-centre / Quadro -> https://www.nvidia.com/Download/index.aspx" -ForegroundColor White
+    } else {
+        Write-Host "  All drivers -> https://www.nvidia.com/en-us/geforce/drivers/" -ForegroundColor White
+    }
+    Write-Host "  Install the Game Ready or Studio driver, then rerun this script." -ForegroundColor Yellow
     exit 1
 }
 
@@ -86,9 +133,9 @@ $driverVer  = ($driverLine -split ",")[1].Trim()
 Write-Step "Driver version: $driverVer"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2.  Conda availability — install Miniconda if missing
+# 2.  Conda availability -install Miniconda if missing
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 2 — Checking for Conda"
+Write-Header "Step 2 - Checking for Conda"
 
 function Find-Conda {
     # Try conda on PATH first
@@ -149,7 +196,7 @@ if ($env:PATH -notlike "*$condaDir*") {
 # ─────────────────────────────────────────────────────────────────────────────
 # 3.  Create (or recreate) the isolated environment
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 3 — Creating Isolated Conda Environment: $EnvName"
+Write-Header "Step 3 - Creating Isolated Conda Environment: $EnvName"
 
 # Check if env already exists
 $existingEnvs = & $condaExe env list --json 2>&1 | ConvertFrom-Json
@@ -200,7 +247,7 @@ function Invoke-InEnv {
 # ─────────────────────────────────────────────────────────────────────────────
 # 4.  Install PyTorch with correct CUDA version
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 4 — Installing PyTorch (CUDA $CudaVersion)"
+Write-Header "Step 4 - Installing PyTorch (CUDA $CudaVersion)"
 
 $cudaTag = "cu" + ($CudaVersion -replace "\.", "")   # e.g. "cu124"
 $torchIndex = "https://download.pytorch.org/whl/$cudaTag"
@@ -215,7 +262,7 @@ Write-Success "PyTorch installed with CUDA $CudaVersion support."
 # ─────────────────────────────────────────────────────────────────────────────
 # 5.  Install Windows-specific packages (triton-windows, bitsandbytes, xformers)
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 5 — Installing Windows-Specific ML Packages"
+Write-Header "Step 5 - Installing Windows-Specific ML Packages"
 
 Write-Step "Installing triton-windows..."
 Invoke-InEnv pip @("install", "triton-windows")
@@ -231,7 +278,7 @@ Write-Success "Windows-specific ML packages installed."
 # ─────────────────────────────────────────────────────────────────────────────
 # 6.  Install HuggingFace ecosystem & training libs
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 6 — Installing HuggingFace Ecosystem"
+Write-Header "Step 6 - Installing HuggingFace Ecosystem"
 
 Invoke-InEnv pip @(
     "install", "--upgrade",
@@ -257,7 +304,7 @@ Write-Success "HuggingFace ecosystem installed."
 # ─────────────────────────────────────────────────────────────────────────────
 # 7.  Install Unsloth from source (editable mode)
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 7 — Installing Unsloth from Source (Editable)"
+Write-Header "Step 7 - Installing Unsloth from Source (Editable)"
 
 # Install core unsloth without overriding torch
 Invoke-InEnv pip @(
@@ -270,7 +317,7 @@ Write-Success "Unsloth installed from source in editable mode."
 # ─────────────────────────────────────────────────────────────────────────────
 # 8.  Install auxiliary & logging packages
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 8 — Installing Auxiliary Packages"
+Write-Header "Step 8 - Installing Auxiliary Packages"
 
 Invoke-InEnv pip @(
     "install",
@@ -286,42 +333,42 @@ Write-Success "Auxiliary packages installed."
 # ─────────────────────────────────────────────────────────────────────────────
 # 9.  Write .env template for credentials & config
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 9 — Writing .env Template"
+Write-Header "Step 9 - Writing .env Template"
 
 $envFile = Join-Path $RepoRoot ".env"
 if (-not (Test-Path $envFile)) {
-    @"
-# ─── HuggingFace ─────────────────────────────────────────────────────────────
+    @'
+# --- HuggingFace ---
 HF_TOKEN=your_huggingface_token_here
-HF_HUB_ENABLE_HF_TRANSFER=1          # Faster model downloads via hf_transfer
+HF_HUB_ENABLE_HF_TRANSFER=1
 
-# ─── Weights & Biases (optional) ─────────────────────────────────────────────
+# --- Weights & Biases (optional) ---
 WANDB_API_KEY=your_wandb_key_here
 WANDB_PROJECT=qwen3-grpo
 WANDB_ENTITY=your_team_or_username
 
-# ─── GPU & CUDA ───────────────────────────────────────────────────────────────
-CUDA_VISIBLE_DEVICES=0               # Set to "0,1" for multi-GPU
+# --- GPU & CUDA ---
+CUDA_VISIBLE_DEVICES=0
 
-# ─── Unsloth ──────────────────────────────────────────────────────────────────
+# --- Unsloth ---
 UNSLOTH_IS_PRESENT=1
-UNSLOTH_OFFLOAD_TO_DISK=0            # Set 1 to offload optimizer states
+UNSLOTH_OFFLOAD_TO_DISK=0
 
-# ─── Training defaults (override via CLI or YAML) ─────────────────────────────
+# --- Training defaults (override via CLI or YAML) ---
 GRPO_MODEL=unsloth/Qwen3-8B
 GRPO_OUTPUT_DIR=outputs/qwen3-grpo
-"@ | Set-Content $envFile -Encoding UTF8
+'@ | Set-Content $envFile -Encoding UTF8
     Write-Success ".env template written to $envFile"
 } else {
-    Write-Warn ".env already exists — skipping template write."
+    Write-Warn ".env already exists -skipping template write."
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 10.  Smoke-test the installation
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 10 — Smoke-Test"
+Write-Header "Step 10 - Smoke-Test"
 
-$testScript = @"
+$testScript = @'
 import sys
 print(f'Python: {sys.version}')
 
@@ -352,8 +399,8 @@ except ImportError:
     print('triton:       not available (optional on Windows)')
 
 print()
-print('✔  All core packages imported successfully.')
-"@
+print('[OK] All core packages imported successfully.')
+'@
 
 $testFile = "$env:TEMP\unsloth_smoke_test.py"
 $testScript | Set-Content $testFile -Encoding UTF8
@@ -361,7 +408,7 @@ $testScript | Set-Content $testFile -Encoding UTF8
 Invoke-InEnv python @($testFile) -NoThrow
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Fail "Smoke-test failed — review errors above."
+    Write-Fail "Smoke-test failed -review errors above."
     exit 1
 }
 
@@ -374,12 +421,12 @@ Write-Header "Setup Complete"
 
 Write-Host @"
 
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  Environment : $EnvName
-  │  Activate    : conda activate $EnvName
-  │  Train       : python scripts\train_qwen3_grpo.py --config configs\qwen3_grpo.yaml
-  │  Docs        : docs\WINDOWS_QWEN3_GRPO_SETUP.md
-  └──────────────────────────────────────────────────────────────────┘
+  +------------------------------------------------------------------+
+  |  Environment : $EnvName
+  |  Activate    : conda activate $EnvName
+  |  Train       : python scripts\train_qwen3_grpo.py --config configs\qwen3_grpo.yaml
+  |  Docs        : docs\WINDOWS_QWEN3_GRPO_SETUP.md
+  +------------------------------------------------------------------+
 
   Edit .env with your HF_TOKEN and optional WANDB_API_KEY before training.
 "@ -ForegroundColor Cyan

@@ -22,10 +22,26 @@ Complete guide for running **Qwen3** fine-tuning with **Advanced GRPO** (Group R
 
 ## Prerequisites
 
+### Hardware check (run this first)
+
+```powershell
+# Check what GPU you have before running the installer
+Get-WmiObject Win32_VideoController | Select-Object Name, AdapterRAM | Format-List
+```
+
+You need a **discrete NVIDIA GPU** (GeForce, RTX, Quadro, Tesla). The following do **not** support CUDA:
+- Intel Iris Xe / UHD / Arc (integrated)
+- AMD Radeon (requires ROCm, not covered here)
+- No GPU / CPU-only machines
+
+> **No NVIDIA GPU?** See [No GPU — Cloud & Colab alternatives](#no-gpu--cloud--colab-alternatives) below.
+
+### Requirements table
+
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
 | OS | Windows 10 (22H2) | Windows 11 |
-| GPU | NVIDIA, 6 GB VRAM (4-bit) | RTX 3080+ / 16 GB VRAM |
+| GPU | **Discrete NVIDIA**, 6 GB VRAM | RTX 3080+ / 16 GB VRAM |
 | CUDA Driver | 520+ (for CUDA 11.8) | 550+ (for CUDA 12.4) |
 | Disk Space | 20 GB | 50 GB |
 | RAM | 16 GB | 32 GB |
@@ -34,6 +50,49 @@ Complete guide for running **Qwen3** fine-tuning with **Advanced GRPO** (Group R
 > **Note**: Flash Attention is not available as a pre-built wheel on Windows.
 > Unsloth uses **xformers** attention + custom Triton kernels (`triton-windows`) instead,
 > achieving comparable speed on NVIDIA GPUs.
+
+---
+
+## No GPU — Cloud & Colab Alternatives
+
+If your machine has no NVIDIA GPU (e.g., a laptop with Intel/AMD integrated graphics),
+use one of these zero-local-setup paths:
+
+### Option A: Google Colab (Free)
+
+A ready-to-run notebook is included in this repository:
+
+```
+notebooks/qwen3_grpo_colab.ipynb
+```
+
+1. Go to [colab.research.google.com](https://colab.research.google.com)
+2. **File > Upload notebook** — select `notebooks/qwen3_grpo_colab.ipynb`
+3. **Runtime > Change runtime type > T4 GPU** (free tier)
+4. Run all cells from top to bottom
+
+| Colab tier | GPU | VRAM | Best model |
+|-----------|-----|------|-----------|
+| Free | T4 | 16 GB | Qwen3-4B (4-bit) |
+| Colab Pro | A100 | 40 GB | Qwen3-14B (4-bit) |
+
+### Option B: Cloud GPU (on-demand, pay-per-hour)
+
+| Provider | GPU options | Est. cost | Link |
+|----------|------------|-----------|------|
+| RunPod | RTX 4090 (24 GB) | ~$0.74/hr | https://www.runpod.io |
+| vast.ai | Community spot GPUs | ~$0.30-0.80/hr | https://vast.ai |
+| Lambda Labs | A10 / A100 | ~$0.75-2.50/hr | https://lambdalabs.com |
+| Google Colab Pro | A100 | ~$10/month | https://colab.research.google.com |
+
+On any cloud Linux instance, use the Linux setup instead of the Windows installer:
+
+```bash
+pip install "unsloth[huggingface]"
+python scripts/train_qwen3_grpo.py --config configs/qwen3_grpo.yaml
+```
+
+---
 
 ### Check your GPU driver and CUDA version
 

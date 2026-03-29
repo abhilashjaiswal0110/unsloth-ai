@@ -56,8 +56,14 @@ def step_generate_data(sectors: list[str], data_dir: str = "data/sectors") -> No
     for sector in sectors:
         train = data_path / f"{sector}_train.jsonl"
         eval_ = data_path / f"{sector}_eval.jsonl"
-        t_count = sum(1 for _ in open(train, encoding="utf-8")) if train.exists() else 0
-        e_count = sum(1 for _ in open(eval_, encoding="utf-8")) if eval_.exists() else 0
+        t_count = 0
+        if train.exists():
+            with open(train, encoding="utf-8") as f:
+                t_count = sum(1 for _ in f)
+        e_count = 0
+        if eval_.exists():
+            with open(eval_, encoding="utf-8") as f:
+                e_count = sum(1 for _ in f)
         log.info("  %s — train: %d, eval: %d", sector, t_count, e_count)
 
 
@@ -82,7 +88,9 @@ def step_train(
         if cfg_path.exists():
             cfg = SectorTrainingConfig.from_yaml(cfg_path)
         else:
-            cfg = SectorTrainingConfig(sector=sector, output_dir=f"outputs/{sector}-grpo")
+            cfg = SectorTrainingConfig(
+                sector=sector, output_dir=f"outputs/{sector}-grpo"
+            )
 
         if model:
             cfg.model = model
@@ -145,7 +153,16 @@ def step_consolidated_report(
         "summary": {},
     }
 
-    dims = ["correctness", "accuracy", "completion", "truthfulness", "safety", "reasoning", "format", "overall"]
+    dims = [
+        "correctness",
+        "accuracy",
+        "completion",
+        "truthfulness",
+        "safety",
+        "reasoning",
+        "format",
+        "overall",
+    ]
 
     for sector, metrics in all_metrics.items():
         agg = metrics.get("aggregate", {})
@@ -164,7 +181,9 @@ def step_consolidated_report(
     all_passed = all(
         s.get("verdict") == "PASS" for s in consolidated["sectors"].values()
     )
-    consolidated["summary"]["overall_verdict"] = "ALL PASS" if all_passed else "SOME FAIL"
+    consolidated["summary"]["overall_verdict"] = (
+        "ALL PASS" if all_passed else "SOME FAIL"
+    )
 
     out_path = report_path / "consolidated_report.json"
     with open(out_path, "w", encoding="utf-8") as f:
@@ -175,12 +194,16 @@ def step_consolidated_report(
     print("\n" + "=" * 70)
     print("  CONSOLIDATED PIPELINE REPORT")
     print("=" * 70)
-    print(f"\n  {'Sector':<18} {'Verdict':<8} {'Overall':<8} {'Correct':<8} {'Accuracy':<8} {'Safety':<8}")
+    print(
+        f"\n  {'Sector':<18} {'Verdict':<8} {'Overall':<8} {'Correct':<8} {'Accuracy':<8} {'Safety':<8}"
+    )
     print("  " + "-" * 60)
     for sector, data in consolidated["sectors"].items():
         s = data["scores"]
-        print(f"  {sector:<18} {data['verdict']:<8} {s['overall']:<8.4f} "
-              f"{s['correctness']:<8.4f} {s['accuracy']:<8.4f} {s['safety']:<8.4f}")
+        print(
+            f"  {sector:<18} {data['verdict']:<8} {s['overall']:<8.4f} "
+            f"{s['correctness']:<8.4f} {s['accuracy']:<8.4f} {s['safety']:<8.4f}"
+        )
     print(f"\n  Overall verdict: {consolidated['summary']['overall_verdict']}")
     print("=" * 70 + "\n")
 
@@ -188,6 +211,7 @@ def step_consolidated_report(
 # ─────────────────────────────────────────────────────────────────────────────
 # Main orchestrator
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def run_pipeline(
     sectors: list[str] | None = None,
@@ -214,7 +238,9 @@ def run_pipeline(
     # Step 2: Training
     model_dirs = {}
     if not skip_train:
-        model_dirs = step_train(sectors, model=model, max_steps=max_steps, num_epochs=num_epochs)
+        model_dirs = step_train(
+            sectors, model=model, max_steps=max_steps, num_epochs=num_epochs
+        )
     else:
         log.info("Skipping training (--skip-train)")
         model_dirs = {s: f"outputs/{s}-grpo" for s in sectors}
@@ -222,7 +248,9 @@ def run_pipeline(
     # Step 3: Evaluation
     all_metrics = {}
     if not skip_eval:
-        all_metrics = step_evaluate(sectors, model_dirs, data_dir, report_dir, max_eval_samples)
+        all_metrics = step_evaluate(
+            sectors, model_dirs, data_dir, report_dir, max_eval_samples
+        )
     else:
         log.info("Skipping evaluation (--skip-eval)")
 
@@ -240,12 +268,15 @@ def run_pipeline(
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description="End-to-End Sector GRPO Pipeline",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--sector", type=str, choices=ALL_SECTORS, help="Single sector (default: all)")
+    p.add_argument(
+        "--sector", type=str, choices=ALL_SECTORS, help="Single sector (default: all)"
+    )
     p.add_argument("--model", type=str, help="Base model override")
     p.add_argument("--max-steps", dest="max_steps", type=int, help="Max training steps")
     p.add_argument("--num-epochs", dest="num_epochs", type=int, help="Training epochs")

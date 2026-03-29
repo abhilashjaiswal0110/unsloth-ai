@@ -349,7 +349,9 @@ def generate_sector_dataset(
 ) -> Path:
     """Generate and save a single sector's dataset as JSONL."""
     if sector not in ALL_SECTORS:
-        raise ValueError(f"Unknown sector '{sector}'. Choose from: {list(ALL_SECTORS.keys())}")
+        raise ValueError(
+            f"Unknown sector '{sector}'. Choose from: {list(ALL_SECTORS.keys())}"
+        )
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -387,14 +389,18 @@ def generate_all_datasets(output_dir: str | Path = "data/sectors") -> Path:
     return output_dir
 
 
-def load_sector_dataset(sector: str, split: str = "train", data_dir: str | Path = "data/sectors"):
+def load_sector_dataset(
+    sector: str, split: str = "train", data_dir: str | Path = "data/sectors"
+):
     """Load a sector dataset as a HuggingFace Dataset."""
     from datasets import Dataset
 
     data_dir = Path(data_dir)
     path = data_dir / f"{sector}_{split}.jsonl"
     if not path.exists():
-        raise FileNotFoundError(f"Dataset not found: {path}. Run generate_sector_dataset('{sector}') first.")
+        raise FileNotFoundError(
+            f"Dataset not found: {path}. Run generate_sector_dataset('{sector}') first."
+        )
 
     records = []
     with open(path, "r", encoding="utf-8") as f:

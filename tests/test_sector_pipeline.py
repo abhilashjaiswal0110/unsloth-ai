@@ -44,6 +44,7 @@ from sectors.evaluate_sector_model import (
 # Reward Functions
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestFormatReward:
     def test_structured_completion_scores_high(self):
         comp = (
@@ -118,12 +119,16 @@ class TestReasoningReward:
 
 class TestCompletenessReward:
     def test_complete_answer_scores_high(self):
-        ref = ("Stage 1: Non-blanchable erythema. Stage 2: Partial thickness. "
-               "Stage 3: Full thickness skin loss. Stage 4: Exposed bone.")
-        comp = ("Stage 1 involves non-blanchable erythema of intact skin. "
-                "Stage 2 shows partial thickness loss. "
-                "Stage 3 has full thickness skin loss with adipose visible. "
-                "Stage 4 exposes bone, tendon, or fascia.")
+        ref = (
+            "Stage 1: Non-blanchable erythema. Stage 2: Partial thickness. "
+            "Stage 3: Full thickness skin loss. Stage 4: Exposed bone."
+        )
+        comp = (
+            "Stage 1 involves non-blanchable erythema of intact skin. "
+            "Stage 2 shows partial thickness loss. "
+            "Stage 3 has full thickness skin loss with adipose visible. "
+            "Stage 4 exposes bone, tendon, or fascia."
+        )
         scores = completeness_reward([comp], answers=[ref])
         assert scores[0] >= 0.5
 
@@ -156,7 +161,9 @@ class TestSafetyReward:
         assert scores[0] < 0.5
 
     def test_safe_utility_response(self):
-        comp = "Contact your utility company's customer service department for assistance."
+        comp = (
+            "Contact your utility company's customer service department for assistance."
+        )
         scores = safety_reward([comp], sector="public_utility")
         assert scores[0] >= 0.8
 
@@ -189,6 +196,7 @@ class TestCompositeReward:
 # ─────────────────────────────────────────────────────────────────────────────
 # Evaluation Scoring Functions
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestEvalScoring:
     def test_score_correctness_range(self):
@@ -235,8 +243,15 @@ class TestEvalScoring:
             "BMI = 31.02 kg/m². Obese Class I per WHO classification.",
             "healthcare",
         )
-        expected_dims = {"correctness", "accuracy", "completion", "truthfulness",
-                         "safety", "reasoning", "format"}
+        expected_dims = {
+            "correctness",
+            "accuracy",
+            "completion",
+            "truthfulness",
+            "safety",
+            "reasoning",
+            "format",
+        }
         assert expected_dims == set(scores.keys())
         for dim, val in scores.items():
             assert 0.0 <= val <= 1.0, f"{dim} out of range: {val}"
@@ -247,18 +262,28 @@ class TestAggregateMetrics:
         results = [
             {
                 "scores": {
-                    "correctness": 0.8, "accuracy": 0.9, "completion": 0.7,
-                    "truthfulness": 0.85, "safety": 1.0, "reasoning": 0.6,
-                    "format": 0.7, "overall": 0.78,
+                    "correctness": 0.8,
+                    "accuracy": 0.9,
+                    "completion": 0.7,
+                    "truthfulness": 0.85,
+                    "safety": 1.0,
+                    "reasoning": 0.6,
+                    "format": 0.7,
+                    "overall": 0.78,
                 },
                 "difficulty": "easy",
                 "category": "clinical_reasoning",
             },
             {
                 "scores": {
-                    "correctness": 0.6, "accuracy": 0.5, "completion": 0.5,
-                    "truthfulness": 0.7, "safety": 0.9, "reasoning": 0.4,
-                    "format": 0.5, "overall": 0.58,
+                    "correctness": 0.6,
+                    "accuracy": 0.5,
+                    "completion": 0.5,
+                    "truthfulness": 0.7,
+                    "safety": 0.9,
+                    "reasoning": 0.4,
+                    "format": 0.5,
+                    "overall": 0.58,
                 },
                 "difficulty": "hard",
                 "category": "pharmacology",
@@ -282,9 +307,11 @@ class TestAggregateMetrics:
 # Synthetic Data Generation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestSyntheticData:
     def test_generate_healthcare_dataset(self):
         from sectors.synthetic_data import generate_sector_dataset
+
         with tempfile.TemporaryDirectory() as tmpdir:
             generate_sector_dataset("healthcare", tmpdir)
             train_path = Path(tmpdir) / "healthcare_train.jsonl"
@@ -298,6 +325,7 @@ class TestSyntheticData:
 
     def test_generate_all_sectors(self):
         from sectors.synthetic_data import generate_all_datasets
+
         with tempfile.TemporaryDirectory() as tmpdir:
             generate_all_datasets(tmpdir)
             for sector in ["healthcare", "public_utility", "insurance"]:
@@ -306,12 +334,14 @@ class TestSyntheticData:
 
     def test_invalid_sector_raises(self):
         from sectors.synthetic_data import generate_sector_dataset
+
         with tempfile.TemporaryDirectory() as tmpdir:
             with pytest.raises(ValueError, match="Unknown sector"):
                 generate_sector_dataset("astrology", tmpdir)
 
     def test_dataset_has_required_fields(self):
         from sectors.synthetic_data import generate_sector_dataset
+
         with tempfile.TemporaryDirectory() as tmpdir:
             generate_sector_dataset("insurance", tmpdir)
             with open(Path(tmpdir) / "insurance_train.jsonl", encoding="utf-8") as f:

@@ -52,6 +52,7 @@ log = logging.getLogger("sector_eval")
 # Evaluation configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class EvalConfig:
     model_path: str = ""
@@ -83,18 +84,39 @@ _STEP_RE = re.compile(r"(?:\d+[\.\)]\s|step\s*\d+|•\s|[-–]\s)", re.IGNORECAS
 
 # Healthcare-specific terms that should NOT be hallucinated
 _HEALTHCARE_CRITICAL_TERMS = {
-    "contraindicated", "FDA", "black box warning", "off-label",
-    "clinical trial", "evidence-based", "guideline", "protocol",
+    "contraindicated",
+    "FDA",
+    "black box warning",
+    "off-label",
+    "clinical trial",
+    "evidence-based",
+    "guideline",
+    "protocol",
 }
 
 _INSURANCE_CRITICAL_TERMS = {
-    "deductible", "premium", "coverage", "exclusion", "endorsement",
-    "underwriting", "actuarial", "indemnity", "subrogation",
+    "deductible",
+    "premium",
+    "coverage",
+    "exclusion",
+    "endorsement",
+    "underwriting",
+    "actuarial",
+    "indemnity",
+    "subrogation",
 }
 
 _UTILITY_CRITICAL_TERMS = {
-    "tariff", "rate base", "SCADA", "kWh", "demand charge",
-    "meter", "outage", "NERC", "FERC", "PUC",
+    "tariff",
+    "rate base",
+    "SCADA",
+    "kWh",
+    "demand charge",
+    "meter",
+    "outage",
+    "NERC",
+    "FERC",
+    "PUC",
 }
 
 
@@ -110,13 +132,51 @@ def _extract_numbers(text: str) -> list[float]:
 
 def _keyword_overlap(completion: str, reference: str) -> float:
     stop = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "have",
-        "has", "had", "do", "does", "did", "will", "would", "could", "should",
-        "may", "might", "of", "in", "to", "for", "with", "on", "at", "by",
-        "from", "and", "or", "but", "not", "this", "that", "it", "as",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "of",
+        "in",
+        "to",
+        "for",
+        "with",
+        "on",
+        "at",
+        "by",
+        "from",
+        "and",
+        "or",
+        "but",
+        "not",
+        "this",
+        "that",
+        "it",
+        "as",
     }
-    comp_words = {w.lower().strip(".,;:!?()") for w in completion.split() if len(w) > 2} - stop
-    ref_words = {w.lower().strip(".,;:!?()") for w in reference.split() if len(w) > 2} - stop
+    comp_words = {
+        w.lower().strip(".,;:!?()") for w in completion.split() if len(w) > 2
+    } - stop
+    ref_words = {
+        w.lower().strip(".,;:!?()") for w in reference.split() if len(w) > 2
+    } - stop
     if not ref_words:
         return 0.5
     return len(comp_words & ref_words) / len(ref_words)
@@ -130,7 +190,8 @@ def score_correctness(completion: str, reference: str) -> float:
         return kw
     comp_nums = _extract_numbers(completion)
     matches = sum(
-        1 for rn in ref_nums
+        1
+        for rn in ref_nums
         if any(math.isclose(rn, cn, rel_tol=0.02) for cn in comp_nums)
     )
     num_score = matches / len(ref_nums)
@@ -146,7 +207,8 @@ def score_accuracy(completion: str, reference: str) -> float:
     if not comp_nums:
         return 0.0
     matches = sum(
-        1 for rn in ref_nums
+        1
+        for rn in ref_nums
         if any(math.isclose(rn, cn, rel_tol=0.01) for cn in comp_nums)
     )
     return matches / len(ref_nums)
@@ -154,7 +216,11 @@ def score_accuracy(completion: str, reference: str) -> float:
 
 def score_completion(completion: str, reference: str) -> float:
     """How completely does the response cover the reference answer's key points?"""
-    ref_sentences = [s.strip() for s in reference.replace("\n", ". ").split(". ") if len(s.strip()) > 10]
+    ref_sentences = [
+        s.strip()
+        for s in reference.replace("\n", ". ").split(". ")
+        if len(s.strip()) > 10
+    ]
     if not ref_sentences:
         return 0.5
     covered = 0
@@ -183,7 +249,9 @@ def score_truthfulness(completion: str, reference: str, sector: str) -> float:
     score = 1.0
 
     # Check for fabricated citations
-    fake_cite = re.findall(r"(?:study|research|trial)\s+(?:by|from|in)\s+\w+\s+et\s+al", completion, re.I)
+    fake_cite = re.findall(
+        r"(?:study|research|trial)\s+(?:by|from|in)\s+\w+\s+et\s+al", completion, re.I
+    )
     if fake_cite and "et al" not in reference:
         score -= 0.15 * len(fake_cite)
 
@@ -205,7 +273,9 @@ def score_truthfulness(completion: str, reference: str, sector: str) -> float:
     # If completion uses critical terms not in reference, mild penalty
     comp_lower = completion.lower()
     ref_lower = reference.lower()
-    misused = sum(1 for t in critical if t.lower() in comp_lower and t.lower() not in ref_lower)
+    misused = sum(
+        1 for t in critical if t.lower() in comp_lower and t.lower() not in ref_lower
+    )
     score -= min(misused * 0.03, 0.15)
 
     # Bonus for matching reference structure
@@ -219,6 +289,7 @@ def score_truthfulness(completion: str, reference: str, sector: str) -> float:
 def score_safety(completion: str, sector: str) -> float:
     """Check for unsafe advice specific to sector."""
     from sectors.reward_functions import safety_reward
+
     scores = safety_reward([completion], sector=sector)
     return scores[0]
 
@@ -226,6 +297,7 @@ def score_safety(completion: str, sector: str) -> float:
 def score_reasoning(completion: str) -> float:
     """Evaluate quality of reasoning chain."""
     from sectors.reward_functions import reasoning_reward
+
     scores = reasoning_reward([completion])
     return scores[0]
 
@@ -233,6 +305,7 @@ def score_reasoning(completion: str) -> float:
 def score_format(completion: str) -> float:
     """Evaluate output formatting quality."""
     from sectors.reward_functions import format_reward
+
     scores = format_reward([completion])
     return scores[0]
 
@@ -240,6 +313,7 @@ def score_format(completion: str) -> float:
 # ─────────────────────────────────────────────────────────────────────────────
 # Full evaluation pipeline
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def evaluate_single(
     completion: str,
@@ -258,8 +332,14 @@ def evaluate_single(
     }
 
 
-def generate_completion(model, tokenizer, prompt: str, max_new_tokens: int = 1536,
-                        temperature: float = 0.3, top_p: float = 0.9) -> str:
+def generate_completion(
+    model,
+    tokenizer,
+    prompt: str,
+    max_new_tokens: int = 1536,
+    temperature: float = 0.3,
+    top_p: float = 0.9,
+) -> str:
     """Generate a single completion from the model."""
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     with __import__("torch").no_grad():
@@ -271,7 +351,7 @@ def generate_completion(model, tokenizer, prompt: str, max_new_tokens: int = 153
             do_sample=temperature > 0,
         )
     # Decode only new tokens
-    new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+    new_tokens = outputs[0][inputs["input_ids"].shape[1] :]
     return tokenizer.decode(new_tokens, skip_special_tokens=True)
 
 
@@ -284,6 +364,7 @@ def run_evaluation(cfg: EvalConfig) -> dict[str, Any]:
 
     # Load model
     from unsloth import FastLanguageModel
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=cfg.model_path,
         max_seq_length=4096,
@@ -303,6 +384,7 @@ def run_evaluation(cfg: EvalConfig) -> dict[str, Any]:
 
     # System prompt
     from sectors.train_sector_grpo import SYSTEM_PROMPTS
+
     system_prompt = SYSTEM_PROMPTS.get(cfg.sector, SYSTEM_PROMPTS["healthcare"])
 
     # Run evaluation
@@ -320,16 +402,23 @@ def run_evaluation(cfg: EvalConfig) -> dict[str, Any]:
         ]
         try:
             prompt_text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True, enable_thinking=True,
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=True,
             )
         except TypeError:
             prompt_text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True,
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
             )
 
         # Generate
         completion = generate_completion(
-            model, tokenizer, prompt_text,
+            model,
+            tokenizer,
+            prompt_text,
             max_new_tokens=cfg.max_new_tokens,
             temperature=cfg.temperature,
             top_p=cfg.top_p,
@@ -361,9 +450,14 @@ def run_evaluation(cfg: EvalConfig) -> dict[str, Any]:
         if (i + 1) % 5 == 0 or i == 0:
             log.info(
                 "[%d/%d] overall=%.3f corr=%.3f acc=%.3f comp=%.3f truth=%.3f safe=%.3f",
-                i + 1, len(eval_ds),
-                scores["overall"], scores["correctness"], scores["accuracy"],
-                scores["completion"], scores["truthfulness"], scores["safety"],
+                i + 1,
+                len(eval_ds),
+                scores["overall"],
+                scores["correctness"],
+                scores["accuracy"],
+                scores["completion"],
+                scores["truthfulness"],
+                scores["safety"],
             )
 
     elapsed = time.time() - start_time
@@ -390,7 +484,32 @@ def run_evaluation(cfg: EvalConfig) -> dict[str, Any]:
 
 def _aggregate_metrics(results: list[dict], cfg: EvalConfig) -> dict[str, Any]:
     """Compute aggregate scores and pass/fail status."""
-    dims = ["correctness", "accuracy", "completion", "truthfulness", "safety", "reasoning", "format", "overall"]
+    dims = [
+        "correctness",
+        "accuracy",
+        "completion",
+        "truthfulness",
+        "safety",
+        "reasoning",
+        "format",
+        "overall",
+    ]
+
+    if not results:
+        zero_stat = {"mean": 0.0, "min": 0.0, "max": 0.0, "std": 0.0}
+        return {
+            "per_dimension": {d: zero_stat for d in dims},
+            "by_difficulty": {},
+            "by_category": {},
+            "pass_fail": {
+                d: {"threshold": 0.0, "mean": 0.0, "pass": False}
+                for d in dims
+                if d != "format"
+            },
+            "verdict": "FAIL",
+            "num_samples": 0,
+        }
+
     agg = {}
     for dim in dims:
         values = [r["scores"][dim] for r in results]
@@ -462,7 +581,9 @@ def _std(values: list[float]) -> float:
     return math.sqrt(sum((v - mean) ** 2 for v in values) / (len(values) - 1))
 
 
-def _save_reports(results: list[dict], metrics: dict, sector: str, report_dir: Path) -> None:
+def _save_reports(
+    results: list[dict], metrics: dict, sector: str, report_dir: Path
+) -> None:
     """Save detailed results and aggregate report."""
     # Detailed per-example results
     results_path = report_dir / f"{sector}_eval_results.jsonl"
@@ -494,21 +615,34 @@ def _print_summary(metrics: dict) -> None:
     print("  " + "-" * 66)
     agg = metrics["aggregate"]
     pf = metrics["pass_fail"]
-    for dim in ["correctness", "accuracy", "completion", "truthfulness", "safety", "reasoning", "format", "overall"]:
+    for dim in [
+        "correctness",
+        "accuracy",
+        "completion",
+        "truthfulness",
+        "safety",
+        "reasoning",
+        "format",
+        "overall",
+    ]:
         a = agg[dim]
         status = ""
         if dim in pf:
             p = pf[dim]
             status = f"  {p['threshold']:.2f}      {'PASS' if p['passed'] else 'FAIL'}"
-        print(f"  {dim:<18} {a['mean']:.4f}  {a['min']:.4f}  {a['max']:.4f}  {a['std']:.4f}{status}")
+        print(
+            f"  {dim:<18} {a['mean']:.4f}  {a['min']:.4f}  {a['max']:.4f}  {a['std']:.4f}{status}"
+        )
 
     # By difficulty
     if metrics.get("by_difficulty"):
         print("\n  By Difficulty:")
         print("  " + "-" * 50)
         for diff, vals in metrics["by_difficulty"].items():
-            print(f"    {diff:<8} (n={vals['count']:>2})  overall={vals['overall']:.4f}  "
-                  f"corr={vals['correctness']:.4f}  safe={vals['safety']:.4f}")
+            print(
+                f"    {diff:<8} (n={vals['count']:>2})  overall={vals['overall']:.4f}  "
+                f"corr={vals['correctness']:.4f}  safe={vals['safety']:.4f}"
+            )
 
     # Verdict
     verdict = metrics["verdict"]
@@ -520,6 +654,7 @@ def _print_summary(metrics: dict) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Offline evaluation (no model — score pre-generated completions)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def evaluate_offline(
     completions_path: str | Path,
@@ -557,13 +692,15 @@ def evaluate_offline(
             + 0.05 * scores["format"]
         )
         scores["overall"] = round(overall, 4)
-        results.append({
-            "index": i,
-            "question": rec.get("prompt", "")[:200],
-            "category": rec.get("category", ""),
-            "difficulty": rec.get("difficulty", ""),
-            "scores": scores,
-        })
+        results.append(
+            {
+                "index": i,
+                "question": rec.get("prompt", "")[:200],
+                "category": rec.get("category", ""),
+                "difficulty": rec.get("difficulty", ""),
+                "scores": scores,
+            }
+        )
 
     cfg = EvalConfig(sector=sector, report_dir=str(report_dir))
     metrics = _aggregate_metrics(results, cfg)
@@ -581,19 +718,30 @@ def evaluate_offline(
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Sector Model Evaluation Framework",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--model", dest="model_path", type=str, help="Path to fine-tuned model")
-    p.add_argument("--sector", type=str, choices=["healthcare", "insurance", "public_utility"],
-                   default="healthcare")
-    p.add_argument("--all-sectors", action="store_true", help="Evaluate all three sectors")
+    p.add_argument(
+        "--model", dest="model_path", type=str, help="Path to fine-tuned model"
+    )
+    p.add_argument(
+        "--sector",
+        type=str,
+        choices=["healthcare", "insurance", "public_utility"],
+        default="healthcare",
+    )
+    p.add_argument(
+        "--all-sectors", action="store_true", help="Evaluate all three sectors"
+    )
     p.add_argument("--data-dir", dest="data_dir", type=str, default="data/sectors")
     p.add_argument("--report-dir", dest="report_dir", type=str, default="reports")
     p.add_argument("--max-samples", dest="max_samples", type=int, default=-1)
-    p.add_argument("--offline", type=str, help="Path to JSONL with pre-generated completions")
+    p.add_argument(
+        "--offline", type=str, help="Path to JSONL with pre-generated completions"
+    )
     p.add_argument("--temperature", type=float, default=0.3)
     return p
 

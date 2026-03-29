@@ -45,11 +45,53 @@ def _extract_numbers(text: str) -> list[float]:
 def _keyword_overlap(completion: str, reference: str, min_words: int = 3) -> float:
     """Jaccard-like overlap of meaningful words between completion and reference."""
     stop = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "shall", "can", "of", "in", "to", "for",
-        "with", "on", "at", "by", "from", "and", "or", "but", "not", "this",
-        "that", "it", "as", "if", "than", "then", "so", "no", "yes",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "shall",
+        "can",
+        "of",
+        "in",
+        "to",
+        "for",
+        "with",
+        "on",
+        "at",
+        "by",
+        "from",
+        "and",
+        "or",
+        "but",
+        "not",
+        "this",
+        "that",
+        "it",
+        "as",
+        "if",
+        "than",
+        "then",
+        "so",
+        "no",
+        "yes",
     }
     comp_words = {w.lower().strip(".,;:!?()") for w in completion.split() if len(w) > 2}
     ref_words = {w.lower().strip(".,;:!?()") for w in reference.split() if len(w) > 2}
@@ -80,6 +122,7 @@ def _numeric_accuracy(completion: str, reference: str) -> float:
 # 1. Format Reward (shared)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def format_reward(completions: list[str], **kwargs) -> list[float]:
     """Rewards structured formatting: numbered steps, sections, headings."""
     scores = []
@@ -106,7 +149,10 @@ def format_reward(completions: list[str], **kwargs) -> list[float]:
             score += 0.1
 
         # Closing/summary sentence
-        if any(w in comp.lower() for w in ["in summary", "therefore", "in conclusion", "recommendation"]):
+        if any(
+            w in comp.lower()
+            for w in ["in summary", "therefore", "in conclusion", "recommendation"]
+        ):
             score += 0.1
 
         scores.append(round(min(score, 1.0), 4))
@@ -117,7 +163,10 @@ def format_reward(completions: list[str], **kwargs) -> list[float]:
 # 2. Correctness Reward (sector-aware)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def correctness_reward(completions: list[str], answers: list[str] | None = None, **kwargs) -> list[float]:
+
+def correctness_reward(
+    completions: list[str], answers: list[str] | None = None, **kwargs
+) -> list[float]:
     """
     Rewards factual correctness by checking:
       - Keyword overlap with reference answer
@@ -140,6 +189,7 @@ def correctness_reward(completions: list[str], answers: list[str] | None = None,
 # 3. Reasoning Reward
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def reasoning_reward(completions: list[str], **kwargs) -> list[float]:
     """Rewards step-by-step reasoning, causal connectives, calculations."""
     scores = []
@@ -153,8 +203,18 @@ def reasoning_reward(completions: list[str], **kwargs) -> list[float]:
 
         # Causal/logical connectives
         connectives = sum(
-            1 for w in ["because", "therefore", "since", "thus", "hence",
-                        "as a result", "consequently", "this means", "due to"]
+            1
+            for w in [
+                "because",
+                "therefore",
+                "since",
+                "thus",
+                "hence",
+                "as a result",
+                "consequently",
+                "this means",
+                "due to",
+            ]
             if w in text.lower()
         )
         score += min(connectives * 0.06, 0.3)
@@ -165,8 +225,16 @@ def reasoning_reward(completions: list[str], **kwargs) -> list[float]:
 
         # Comparisons or conditional reasoning
         conditionals = sum(
-            1 for w in ["if ", "however", "although", "whereas", "compared to",
-                        "in contrast", "on the other hand"]
+            1
+            for w in [
+                "if ",
+                "however",
+                "although",
+                "whereas",
+                "compared to",
+                "in contrast",
+                "on the other hand",
+            ]
             if w in text.lower()
         )
         score += min(conditionals * 0.05, 0.2)
@@ -179,7 +247,10 @@ def reasoning_reward(completions: list[str], **kwargs) -> list[float]:
 # 4. Completeness Reward
 # ─────────────────────────────────────────────────────────────────────────────
 
-def completeness_reward(completions: list[str], answers: list[str] | None = None, **kwargs) -> list[float]:
+
+def completeness_reward(
+    completions: list[str], answers: list[str] | None = None, **kwargs
+) -> list[float]:
     """Rewards coverage of key information from reference answer."""
     if not answers:
         return [0.5] * len(completions)
@@ -244,7 +315,9 @@ def _check_unsafe(text: str, patterns: list[str]) -> int:
     return count
 
 
-def safety_reward(completions: list[str], sector: str = "healthcare", **kwargs) -> list[float]:
+def safety_reward(
+    completions: list[str], sector: str = "healthcare", **kwargs
+) -> list[float]:
     """Penalizes unsafe content specific to the sector domain."""
     if sector == "healthcare":
         patterns = _HEALTHCARE_UNSAFE
@@ -267,9 +340,17 @@ def safety_reward(completions: list[str], sector: str = "healthcare", **kwargs) 
 
         # Bonus for including safety caveats / disclaimers
         caveats = sum(
-            1 for w in ["consult", "professional advice", "seek medical",
-                        "contact your", "seek legal", "disclaimer",
-                        "not a substitute", "qualified"]
+            1
+            for w in [
+                "consult",
+                "professional advice",
+                "seek medical",
+                "contact your",
+                "seek legal",
+                "disclaimer",
+                "not a substitute",
+                "qualified",
+            ]
             if w in comp.lower()
         )
         if caveats > 0:
@@ -282,6 +363,7 @@ def safety_reward(completions: list[str], sector: str = "healthcare", **kwargs) 
 # ─────────────────────────────────────────────────────────────────────────────
 # Composite Multi-Objective Reward Factory
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def make_sector_reward(
     sector: str,

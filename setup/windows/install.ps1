@@ -64,10 +64,10 @@ Write-Step  "Conda env name  : $EnvName"
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.  NVIDIA GPU check
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 1 -Verifying NVIDIA GPU"
+Write-Header "Step 1 - Verifying NVIDIA GPU"
 
 # Detect all display adapters and report them before checking NVIDIA
-$allGPUs = Get-WmiObject Win32_VideoController | Select-Object -ExpandProperty Name
+$allGPUs = Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name
 Write-Step "Detected display adapter(s):"
 foreach ($gpu in $allGPUs) { Write-Step "  $gpu" }
 
@@ -119,7 +119,7 @@ try {
     } elseif ($gpuName -match "RTX 30") {
         Write-Host "  RTX 30-series -> https://www.nvidia.com/en-us/geforce/drivers/" -ForegroundColor White
     } elseif ($gpuName -match "Quadro|Tesla|A\d{3}|H\d{3}") {
-        Write-Host "  Data-centre / Quadro -> https://www.nvidia.com/en-us/drivers/unix/" -ForegroundColor White
+        Write-Host "  Data-centre / Quadro -> https://www.nvidia.com/Download/index.aspx" -ForegroundColor White
     } else {
         Write-Host "  All drivers -> https://www.nvidia.com/en-us/geforce/drivers/" -ForegroundColor White
     }
@@ -135,7 +135,7 @@ Write-Step "Driver version: $driverVer"
 # ─────────────────────────────────────────────────────────────────────────────
 # 2.  Conda availability -install Miniconda if missing
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 2 -Checking for Conda"
+Write-Header "Step 2 - Checking for Conda"
 
 function Find-Conda {
     # Try conda on PATH first
@@ -196,7 +196,7 @@ if ($env:PATH -notlike "*$condaDir*") {
 # ─────────────────────────────────────────────────────────────────────────────
 # 3.  Create (or recreate) the isolated environment
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 3 -Creating Isolated Conda Environment: $EnvName"
+Write-Header "Step 3 - Creating Isolated Conda Environment: $EnvName"
 
 # Check if env already exists
 $existingEnvs = & $condaExe env list --json 2>&1 | ConvertFrom-Json
@@ -247,7 +247,7 @@ function Invoke-InEnv {
 # ─────────────────────────────────────────────────────────────────────────────
 # 4.  Install PyTorch with correct CUDA version
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 4 -Installing PyTorch (CUDA $CudaVersion)"
+Write-Header "Step 4 - Installing PyTorch (CUDA $CudaVersion)"
 
 $cudaTag = "cu" + ($CudaVersion -replace "\.", "")   # e.g. "cu124"
 $torchIndex = "https://download.pytorch.org/whl/$cudaTag"
@@ -262,7 +262,7 @@ Write-Success "PyTorch installed with CUDA $CudaVersion support."
 # ─────────────────────────────────────────────────────────────────────────────
 # 5.  Install Windows-specific packages (triton-windows, bitsandbytes, xformers)
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 5 -Installing Windows-Specific ML Packages"
+Write-Header "Step 5 - Installing Windows-Specific ML Packages"
 
 Write-Step "Installing triton-windows..."
 Invoke-InEnv pip @("install", "triton-windows")
@@ -278,7 +278,7 @@ Write-Success "Windows-specific ML packages installed."
 # ─────────────────────────────────────────────────────────────────────────────
 # 6.  Install HuggingFace ecosystem & training libs
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 6 -Installing HuggingFace Ecosystem"
+Write-Header "Step 6 - Installing HuggingFace Ecosystem"
 
 Invoke-InEnv pip @(
     "install", "--upgrade",
@@ -304,7 +304,7 @@ Write-Success "HuggingFace ecosystem installed."
 # ─────────────────────────────────────────────────────────────────────────────
 # 7.  Install Unsloth from source (editable mode)
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 7 -Installing Unsloth from Source (Editable)"
+Write-Header "Step 7 - Installing Unsloth from Source (Editable)"
 
 # Install core unsloth without overriding torch
 Invoke-InEnv pip @(
@@ -317,7 +317,7 @@ Write-Success "Unsloth installed from source in editable mode."
 # ─────────────────────────────────────────────────────────────────────────────
 # 8.  Install auxiliary & logging packages
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 8 -Installing Auxiliary Packages"
+Write-Header "Step 8 - Installing Auxiliary Packages"
 
 Invoke-InEnv pip @(
     "install",
@@ -333,7 +333,7 @@ Write-Success "Auxiliary packages installed."
 # ─────────────────────────────────────────────────────────────────────────────
 # 9.  Write .env template for credentials & config
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 9 -Writing .env Template"
+Write-Header "Step 9 - Writing .env Template"
 
 $envFile = Join-Path $RepoRoot ".env"
 if (-not (Test-Path $envFile)) {
@@ -366,7 +366,7 @@ GRPO_OUTPUT_DIR=outputs/qwen3-grpo
 # ─────────────────────────────────────────────────────────────────────────────
 # 10.  Smoke-test the installation
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Header "Step 10 -Smoke-Test"
+Write-Header "Step 10 - Smoke-Test"
 
 $testScript = @'
 import sys

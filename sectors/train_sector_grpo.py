@@ -57,6 +57,7 @@ log = logging.getLogger("sector_grpo")
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class SectorTrainingConfig:
     # Model
@@ -69,10 +70,17 @@ class SectorTrainingConfig:
     lora_rank: int = 32
     lora_alpha: int = 32
     lora_dropout: float = 0.0
-    target_modules: list[str] = field(default_factory=lambda: [
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "gate_proj", "up_proj", "down_proj",
-    ])
+    target_modules: list[str] = field(
+        default_factory=lambda: [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ]
+    )
 
     # GRPO Trainer
     output_dir: str = "outputs/sector-grpo"
@@ -92,7 +100,7 @@ class SectorTrainingConfig:
     save_steps: int = 25
     eval_steps: int = 25
     fp16: bool = False
-    bf16: bool = True
+    bf16: bool = False
     gradient_checkpointing: str = "unsloth"
 
     # Sector dataset
@@ -189,20 +197,33 @@ def _build_sector_prompt(example: dict, tokenizer, sector: str) -> dict:
 # Dataset loading
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def load_sector_data(cfg: SectorTrainingConfig, tokenizer):
     """Load sector data from JSONL and prepare for GRPO training."""
     from sectors.synthetic_data import generate_sector_dataset, load_sector_dataset
 
     data_dir = Path(cfg.data_dir)
     train_path = data_dir / f"{cfg.sector}_train.jsonl"
+    eval_path = data_dir / f"{cfg.sector}_eval.jsonl"
 
-    # Generate if not exists
-    if not train_path.exists():
+    # Generate if either split does not exist
+    if not train_path.exists() or not eval_path.exists():
         log.info("Generating synthetic data for sector: %s", cfg.sector)
         generate_sector_dataset(cfg.sector, data_dir)
 
-    train_ds = load_sector_dataset(cfg.sector, "train", data_dir)
-    eval_ds = load_sector_dataset(cfg.sector, "eval", data_dir)
+    try:
+        train_ds = load_sector_dataset(cfg.sector, "train", data_dir)
+        eval_ds = load_sector_dataset(cfg.sector, "eval", data_dir)
+    except Exception as exc:
+        # Handle potential corruption or partial generation by regenerating both splits
+        log.warning(
+            "Failed to load sector datasets for %s (%s). Regenerating synthetic data.",
+            cfg.sector,
+            exc,
+        )
+        generate_sector_dataset(cfg.sector, data_dir)
+        train_ds = load_sector_dataset(cfg.sector, "train", data_dir)
+        eval_ds = load_sector_dataset(cfg.sector, "eval", data_dir)
 
     log.info("Loaded %s — train: %d, eval: %d", cfg.sector, len(train_ds), len(eval_ds))
 
@@ -211,12 +232,16 @@ def load_sector_data(cfg: SectorTrainingConfig, tokenizer):
     train_ds = train_ds.map(
         _build_sector_prompt,
         fn_kwargs=fn_kwargs,
-        remove_columns=[c for c in train_ds.column_names if c not in ("prompt", "answer")],
+        remove_columns=[
+            c for c in train_ds.column_names if c not in ("prompt", "answer")
+        ],
     )
     eval_ds = eval_ds.map(
         _build_sector_prompt,
         fn_kwargs=fn_kwargs,
-        remove_columns=[c for c in eval_ds.column_names if c not in ("prompt", "answer")],
+        remove_columns=[
+            c for c in eval_ds.column_names if c not in ("prompt", "answer")
+        ],
     )
 
     return train_ds, eval_ds
@@ -225,6 +250,7 @@ def load_sector_data(cfg: SectorTrainingConfig, tokenizer):
 # ─────────────────────────────────────────────────────────────────────────────
 # Training
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def train_sector(cfg: SectorTrainingConfig) -> Path:
     """Train a single sector model with GRPO."""
@@ -235,7 +261,10 @@ def train_sector(cfg: SectorTrainingConfig) -> Path:
     log.info("=" * 60)
     log.info("Model        : %s", cfg.model)
     log.info("Output dir   : %s", cfg.output_dir)
-    log.info("Quantization : %s", "4-bit" if cfg.load_in_4bit else "8-bit" if cfg.load_in_8bit else "16-bit")
+    log.info(
+        "Quantization : %s",
+        "4-bit" if cfg.load_in_4bit else "8-bit" if cfg.load_in_8bit else "16-bit",
+    )
 
     # 1. Load model + tokenizer
     from unsloth import FastLanguageModel
@@ -262,6 +291,7 @@ def train_sector(cfg: SectorTrainingConfig) -> Path:
 
     # 3. Enable GRPO patch
     from unsloth.models.rl import PatchFastRL
+
     PatchFastRL("GRPO", FastLanguageModel)
 
     # 4. Load sector dataset
@@ -279,8 +309,11 @@ def train_sector(cfg: SectorTrainingConfig) -> Path:
 
     log.info(
         "Reward weights — fmt:%.2f corr:%.2f reas:%.2f comp:%.2f safe:%.2f",
-        cfg.weight_format, cfg.weight_correctness, cfg.weight_reasoning,
-        cfg.weight_completeness, cfg.weight_safety,
+        cfg.weight_format,
+        cfg.weight_correctness,
+        cfg.weight_reasoning,
+        cfg.weight_completeness,
+        cfg.weight_safety,
     )
 
     # 6. GRPO config
@@ -289,6 +322,16 @@ def train_sector(cfg: SectorTrainingConfig) -> Path:
     run_name = cfg.run_name or f"{cfg.sector}-qwen3-grpo"
     output_dir = Path(cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-detect bf16 support if neither fp16 nor bf16 is explicitly set
+    import torch
+
+    use_bf16 = cfg.bf16
+    use_fp16 = cfg.fp16
+    if not use_bf16 and not use_fp16:
+        use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        use_fp16 = not use_bf16
+        log.info("Auto-detected precision: %s", "bf16" if use_bf16 else "fp16")
 
     training_args = GRPOConfig(
         output_dir=str(output_dir),
@@ -300,8 +343,8 @@ def train_sector(cfg: SectorTrainingConfig) -> Path:
         warmup_ratio=cfg.warmup_ratio,
         num_train_epochs=cfg.num_train_epochs,
         max_steps=cfg.max_steps if cfg.max_steps > 0 else -1,
-        fp16=cfg.fp16,
-        bf16=cfg.bf16,
+        fp16=use_fp16,
+        bf16=use_bf16,
         num_generations=cfg.num_generations,
         max_prompt_length=cfg.max_prompt_length,
         max_completion_length=cfg.max_completion_length,
@@ -356,21 +399,37 @@ def train_sector(cfg: SectorTrainingConfig) -> Path:
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Sector-Specific GRPO Training — Healthcare / Insurance / Public Utility",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--config", type=str, help="Path to YAML config file")
-    p.add_argument("--sector", type=str, choices=["healthcare", "insurance", "public_utility"],
-                   help="Sector to train (overrides config)")
-    p.add_argument("--all-sectors", action="store_true", help="Train all three sectors sequentially")
+    p.add_argument(
+        "--sector",
+        type=str,
+        choices=["healthcare", "insurance", "public_utility"],
+        help="Sector to train (overrides config)",
+    )
+    p.add_argument(
+        "--all-sectors",
+        action="store_true",
+        help="Train all three sectors sequentially",
+    )
     p.add_argument("--model", type=str, help="HuggingFace model ID")
     p.add_argument("--output-dir", dest="output_dir", type=str, help="Output directory")
     p.add_argument("--max-steps", dest="max_steps", type=int, help="Max training steps")
-    p.add_argument("--num-epochs", dest="num_train_epochs", type=int, help="Training epochs")
+    p.add_argument(
+        "--num-epochs", dest="num_train_epochs", type=int, help="Training epochs"
+    )
     p.add_argument("--lora-rank", dest="lora_rank", type=int, help="LoRA rank")
-    p.add_argument("--report-to", dest="report_to", type=str, choices=["wandb", "tensorboard", "none"])
+    p.add_argument(
+        "--report-to",
+        dest="report_to",
+        type=str,
+        choices=["wandb", "tensorboard", "none"],
+    )
     return p
 
 
@@ -385,7 +444,9 @@ def main() -> None:
             if cfg_path.exists():
                 cfg = SectorTrainingConfig.from_yaml(cfg_path)
             else:
-                cfg = SectorTrainingConfig(sector=sector, output_dir=f"outputs/{sector}-grpo")
+                cfg = SectorTrainingConfig(
+                    sector=sector, output_dir=f"outputs/{sector}-grpo"
+                )
             # Apply CLI overrides
             if args.max_steps is not None:
                 cfg.max_steps = args.max_steps
